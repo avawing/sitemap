@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sitemap/link"
@@ -13,7 +14,21 @@ func main() {
 	urlFlag := flag.String("url", "https://gophercises.com", "url that you want to build a sitemap for")
 	flag.Parse()
 
-	resp, err := http.Get(*urlFlag)
+	pages := get(*urlFlag)
+	_ = pages
+	for _, page := range pages {
+		fmt.Println(page)
+	}
+
+	/*	we only want internal paths at base-url
+		/some-path
+		base-url/some-path
+		#fragment
+		mailto:
+	*/
+}
+func get(urlStr string) []string {
+	resp, err := http.Get(urlStr)
 	if err != nil {
 		panic(err)
 	}
@@ -32,29 +47,33 @@ func main() {
 	}
 	base := baseUrl.String()
 	fmt.Println(base)
+	return filter(base, hrefs(resp.Body, base))
+}
 
-	links, _ := link.Parse(resp.Body)
+func filter(base string, links []string) []string {
+	var ret []string
+	for _, lnk := range links {
+		if strings.HasPrefix(lnk, base) {
+			ret = append(ret, lnk)
+		}
+	}
+	return ret
+}
 
-	var hrefs []string
+func hrefs(body io.Reader, base string) []string {
+	links, _ := link.Parse(body)
+
+	var ret []string
 
 	for _, lnk := range links {
 		switch {
 		case strings.HasPrefix(lnk.Href, "/"):
-			hrefs = append(hrefs, base+lnk.Href)
+			ret = append(ret, base+lnk.Href)
 		case strings.HasPrefix(lnk.Href, "http"):
-			hrefs = append(hrefs, lnk.Href)
+			ret = append(ret, lnk.Href)
 		}
 	}
-
-	for _, href := range hrefs {
-		fmt.Println(href)
-	}
-	/*	we only want internal paths at base-url
-		/some-path
-		base-url/some-path
-		#fragment
-		mailto:
-	*/
+	return ret
 }
 
 /**
