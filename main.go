@@ -1,25 +1,48 @@
 package main
 
 import (
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"sitemap/link"
 	"strings"
 )
 
+const xmlns = "http://www.sitemaps.org/schemas/sitemap/0.9"
+
+type loc struct {
+	Value string `xml:"loc"`
+}
+
+type urlSet struct {
+	Xmlns string `xml:"xmlns,attr"`
+	URLS  []loc  `xml:"url"`
+}
+
 func main() {
 	urlFlag := flag.String("url", "https://gophercises.com", "url that you want to build a sitemap for")
+	maxDepth := flag.Int("depth", 10, "the maximum depth of links")
 	flag.Parse()
 
-	pages := get(*urlFlag)
+	pages := bfs(*urlFlag, *maxDepth)
+	toXML := urlSet{
+		Xmlns: xmlns,
+	}
+	//pages := get(*urlFlag)
 	_ = pages
 	for _, page := range pages {
-		fmt.Println(page)
+		toXML.URLS = append(toXML.URLS, loc{page})
 	}
-
+	fmt.Print(xml.Header)
+	enc := xml.NewEncoder(os.Stdout)
+	enc.Indent("", "  ")
+	if err := enc.Encode(toXML); err != nil {
+		panic(err)
+	}
 	/*	we only want internal paths at base-url
 		/some-path
 		base-url/some-path
@@ -27,6 +50,36 @@ func main() {
 		mailto:
 	*/
 }
+
+func bfs(urlStr string, maxDepth int) []string {
+	// key is hashed in map - cool!
+	// empty struct uses less memory than other things - fun fact!
+	var ret []string
+	seen := make(map[string]struct{})
+	var queue map[string]struct{}
+	enqueue := map[string]struct{}{
+		urlStr: {},
+	}
+	for i := 0; i <= maxDepth; i++ {
+		queue, enqueue = enqueue, make(map[string]struct{})
+		for nqurl, _ := range queue {
+			if _, ok := seen[nqurl]; ok {
+				continue
+			}
+			seen[nqurl] = struct{}{}
+			for _, seenLnk := range get(nqurl) {
+				enqueue[seenLnk] = struct{}{}
+			}
+
+		}
+	}
+
+	for seenUrl, _ := range seen {
+		ret = append(ret, seenUrl)
+	}
+	return ret
+}
+
 func get(urlStr string) []string {
 	resp, err := http.Get(urlStr)
 	if err != nil {
