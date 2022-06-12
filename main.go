@@ -2,9 +2,11 @@ package main
 
 import (
 	"flag"
-	"io"
+	"fmt"
 	"net/http"
-	"os"
+	"net/url"
+	"sitemap/link"
+	"strings"
 )
 
 func main() {
@@ -15,6 +17,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	//MUST CLOSE RESPONSE BODY
 	// defer -> whenever this function closes, run this
 	// Benefit of using defer: can put code at any point in the code
@@ -22,7 +25,36 @@ func main() {
 	// You may skip it on accident / ex: if condition -> return OOPS!
 	defer resp.Body.Close()
 
-	io.Copy(os.Stdout, resp.Body)
+	reqUrl := resp.Request.URL
+	baseUrl := &url.URL{
+		Scheme: reqUrl.Scheme,
+		Host:   reqUrl.Host,
+	}
+	base := baseUrl.String()
+	fmt.Println(base)
+
+	links, _ := link.Parse(resp.Body)
+
+	var hrefs []string
+
+	for _, lnk := range links {
+		switch {
+		case strings.HasPrefix(lnk.Href, "/"):
+			hrefs = append(hrefs, base+lnk.Href)
+		case strings.HasPrefix(lnk.Href, "http"):
+			hrefs = append(hrefs, lnk.Href)
+		}
+	}
+
+	for _, href := range hrefs {
+		fmt.Println(href)
+	}
+	/*	we only want internal paths at base-url
+		/some-path
+		base-url/some-path
+		#fragment
+		mailto:
+	*/
 }
 
 /**
